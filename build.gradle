@@ -1,0 +1,40 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+repositories {
+    maven { url = 'https://repo.runelite.net'; content { includeGroupByRegex('net\\.runelite.*') } }
+    mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+dependencies {
+    compileOnly "net.runelite:client:${runeLiteVersion}"
+    runtimeOnly "net.runelite:client:${runeLiteVersion}"
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation "net.runelite:client:${runeLiteVersion}"
+}
+group = 'com.vorkprofit'
+version = '1.0.0'
+
+// Keep the plugin descriptor in the JAR so RuneLite's plugin loader can discover it.
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release.set(11)
+}
+
+// Launch the RuneLite client for local development with `gradlew run`.
+application {
+    mainClass = 'com.vorkprofit.vorkath.DevClientLauncher'
+}
+
+tasks.named('run', JavaExec).configure {
+    classpath = sourceSets.test.runtimeClasspath
+    enableAssertions = true
+    args '--developer-mode', '--debug'
+}
+
