@@ -58,13 +58,14 @@ public final class VorkathPlugin extends Plugin
 	private int pendingItemId = -1;
 	private long pendingItemClickTime;
 	private Map<Integer, Integer> lastInventory = new HashMap<>();
+	private final Map<Integer, Long> droppedItems = new HashMap<>();
 
 	// ── Lifecycle ────────────────────────────────────────────────────────────────
 
 	@Override
 	protected void startUp()
 	{
-		panel = new VorkathPanel(session, client);
+		panel = new VorkathPanel(session, client, itemManager);
 		button = NavigationButton.builder()
 			.tooltip("Vorkath Profit Tracker")
 			.priority(8)
@@ -80,6 +81,7 @@ public final class VorkathPlugin extends Plugin
 		if (button != null) toolbar.removeNavigation(button);
 		vorkath = null;
 		panel = null;
+		droppedItems.clear();
 	}
 
 	// ── Game tick: instance detection & panel refresh ─────────────────────────
@@ -88,16 +90,33 @@ public final class VorkathPlugin extends Plugin
 	public void onGameTick(GameTick event)
 	{
 		long now = System.currentTimeMillis();
-		session.startIfNeeded(now, combatExperience());
-
 		boolean inInstance = isInVorkathInstance();
-		session.tickInstanceTimer(now, inInstance);
+
+		// Start session when the player climbs over the rock into the instance
+		if (!session.isStarted() && inInstance)
+		{
+			session.start(now, combatExperience());
+		}
+
+		session.tickTimers(now, inInstance);
 
 		if (vorkath == null)
+		{
 			for (NPC npc : client.getNpcs())
-				if (isVorkath(npc)) { vorkath = npc; deathRecorded = false; break; }
+			{
+				if (isVorkath(npc))
+				{
+					vorkath = npc;
+					deathRecorded = false;
+					break;
+				}
+			}
+		}
 
-		if (panel != null) panel.refresh();
+		if (panel != null)
+		{
+			panel.refresh();
+		}
 	}
 
 	// ── NPC tracking ─────────────────────────────────────────────────────────
@@ -142,7 +161,16 @@ public final class VorkathPlugin extends Plugin
 			|| location.distanceTo2D(lootOrigin) > 8) return;
 
 		TileItem item = event.getItem();
-		session.recordLoot((long) item.getQuantity() * itemManager.getItemPrice(item.getId()));
+		Long droppedTime = droppedItems.get(item.getId());
+		if (droppedTime != null && System.currentTimeMillis() - droppedTime < 3000L)
+		{
+			return;
+		}
+
+		int id = item.getId();
+		int quantity = item.getQuantity();
+		long price = (long) quantity * itemManager.getItemPrice(id);
+		session.recordLoot(id, quantity, price);
 	}
 
 	// ── Consumable / cost tracking ─────────────────────────────────────────────
@@ -175,6 +203,12 @@ public final class VorkathPlugin extends Plugin
 
 		// Never count depositing/storing items as a cost
 		if (option.startsWith("deposit") || option.startsWith("store")) return;
+
+		if ("drop".equals(option))
+		{
+			droppedItems.put(itemId, System.currentTimeMillis());
+			return;
+		}
 
 		boolean trackedAction = "eat".equals(option)
 			|| "drink".equals(option)
@@ -315,4 +349,3 @@ public final class VorkathPlugin extends Plugin
 		return total;
 	}
 }
-
